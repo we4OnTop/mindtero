@@ -11,6 +11,7 @@
     "electron:dev": "npm run build && node scripts/run-electron.cjs",
     "electron:build": "npm run build && node scripts/run-electron.cjs"
   },
+  "description": "Visual thinking layer for a local Zotero library: spatial boards, typed relations, PDF quote cards and page snapshots.",
   "main": "electron/main.cjs",
   "author": "we4OnTop",
   "build": {

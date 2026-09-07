@@ -10,7 +10,31 @@ import { useZoteroConnection } from '@/features/zotero/queries'
 import { useSettings, type SourceMode } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
-function ModeToggle() {
+export function ModeToggle() {
+  const mode = useMode()
+  return (
+    <div>
+      <span>Zeige {mode}</span>
+    </div>
+  )
+}
+  const mode = useSettings((state) => state.mode)
+  const setMode = useSettings((state) => state.setMode)
+  return (
+    <Select
+      value={mode}
+      onValueChange={(value) => setMode(value as SourceMode)}
+    >
+      <SelectTrigger className="w-[120px]">
+        <SelectValue placeholder="Mode" />
+      </Select>
+      <SelectContent>
+        <SelectItem value="demo">Demo library</SelectItem>
+        <SelectItem value="real">Zotero (live)</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
   const mode = useSettings((state) => state.mode)
   const setMode = useSettings((state) => state.setMode)
   return (
@@ -26,12 +50,39 @@ function ModeToggle() {
 }
 
 export function ConnectionBadge() {
-  const connection = useZoteroConnection()
-  const mode = useSettings((state) => state.mode)
-  const setMode = useSettings((state) => state.setMode)
-  const info = connection.data
+  const { mode, setMode } = useMode()
+  return (
+    <Select
+      className="w-[140px]"
+      value={mode}
+      onValueChange={(next) => setMode(next)}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Mode" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="demo">Demo library</SelectItem>
+        <SelectItem value="real">Zotero (live)</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
 
   if (mode === 'demo') {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button size="sm" variant="outline">
+            Demo library <ArrowRight />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end">
+          <p>Die Demo-Bibliothek enthält keine Anmerkungen (Annotationen). Wechsle zurück zu Zotero, um Highlights zu sehen.</p>
+          <Button onClick={() => setMode('demo' as SourceMode)}>Use demo mode</Button>
+        </PopoverContent>
+      </Popover>
+    )
+  }
     return (
       <Tooltip>
         <TooltipTrigger asChild>

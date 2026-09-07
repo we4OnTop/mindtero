@@ -17,7 +17,7 @@ permissions:
 jobs:
   release:
     if: github.repository == 'we4OnTop/mindtero'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       OWNER_LOGIN: we4OnTop
       OWNER_ID: '127755854'
@@ -32,6 +32,7 @@ jobs:
 
       - name: Compute next version
         id: version
+        shell: bash
         run: |
           set -euo pipefail
           PREV=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
@@ -46,13 +47,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.next }}
         run: |
-          VERSION="${VERSION#v}"
-          node -e '
-            const fs = require("fs");
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            pkg.version = process.env.VERSION;
-            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-          '
+          $env:VERSION = "${VERSION#v}"
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version=process.env.VERSION;fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
 
       - name: Install
         run: npm ci
@@ -73,23 +69,14 @@ jobs:
           git config user.name "${OWNER_LOGIN}"
           git config user.email "${OWNER_ID}+${OWNER_LOGIN}@users.noreply.github.com"
           git add package.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(release): bump to ${VERSION#v}"
-          fi
+          if (!(git diff --cached --quiet)) {
+            git commit -m "chore(release): bump to $($VERSION -replace '^v', '')"
+          }
           git push
+        shell: pwsh
 
-      - name: Tag
-        env:
-          VERSION: ${{ steps.version.outputs.next }}
-        run: |
-          git tag -f "${VERSION}"
-          git push origin "${VERSION}"
-
-      - name: Package bundle
-        env:
-          VERSION: ${{ steps.version.outputs.next }}
-        run: |
-          (cd dist && zip -r "../mindtero-${VERSION}-web.zip" .)
+      - name: Package exe installer
+        run: npx electron-builder --win portable --publish never
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -97,4 +84,5 @@ jobs:
           tag_name: ${{ steps.version.outputs.next }}
           name: "Mindtero ${{ steps.version.outputs.next }}"
           generate_release_notes: true
-          files: mindtero-*-web.zip
+          files: |
+            dist/installer/*.exe

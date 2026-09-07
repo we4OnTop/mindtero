@@ -12,6 +12,7 @@
     "electron:build": "npm run build && node scripts/run-electron.cjs"
   },
   "main": "electron/main.cjs",
+  "author": "we4OnTop",
   "build": {
     "appId": "app.mindtero.desktop",
     "productName": "Mindtero",

@@ -92,4 +92,4 @@ jobs:
           name: "Mindtero ${{ steps.version.outputs.next }}"
           generate_release_notes: true
           files: |
-            dist/installer/*.exe
+            dist/Mindtero*.exe

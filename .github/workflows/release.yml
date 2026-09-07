@@ -5,7 +5,8 @@ on:
     branches: [main]
 
 # Gate: releases are only ever built and published from this exact repository,
-# never from forks or clones.
+# never from forks or clones. Version commits carry the owner's GitHub identity
+# so the bot never shows up as a contributor.
 concurrency:
   group: release-${{ github.repository }}
   cancel-in-progress: false
@@ -17,6 +18,9 @@ jobs:
   release:
     if: github.repository == 'we4OnTop/mindtero'
     runs-on: ubuntu-latest
+    env:
+      OWNER_LOGIN: we4OnTop
+      OWNER_ID: '127755854'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,11 +70,11 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.next }}
         run: |
-          git config user.name "mindtero-release-bot"
-          git config user.email "actions@github.com"
+          git config user.name "${OWNER_LOGIN}"
+          git config user.email "${OWNER_ID}+${OWNER_LOGIN}@users.noreply.github.com"
           git add package.json
           if ! git diff --cached --quiet; then
-            git commit -m "chore(release): bump to ${NEXT#v}"
+            git commit -m "chore(release): bump to ${VERSION#v}"
           fi
           git push
 

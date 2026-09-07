@@ -47,8 +47,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.next }}
         run: |
-          $env:VERSION = "${VERSION#v}"
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version=process.env.VERSION;fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          VERSION="${VERSION#v}"
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          '
+          echo "Bumped to ${VERSION}"
+        shell: bash
 
       - name: Install
         run: npm ci

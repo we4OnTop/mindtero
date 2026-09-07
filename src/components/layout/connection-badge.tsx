@@ -10,31 +10,8 @@ import { useZoteroConnection } from '@/features/zotero/queries'
 import { useSettings, type SourceMode } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
+/** Switches between the bundled demo fixtures and the live Zotero API. */
 export function ModeToggle() {
-  const mode = useMode()
-  return (
-    <div>
-      <span>Zeige {mode}</span>
-    </div>
-  )
-}
-  const mode = useSettings((state) => state.mode)
-  const setMode = useSettings((state) => state.setMode)
-  return (
-    <Select
-      value={mode}
-      onValueChange={(value) => setMode(value as SourceMode)}
-    >
-      <SelectTrigger className="w-[120px]">
-        <SelectValue placeholder="Mode" />
-      </Select>
-      <SelectContent>
-        <SelectItem value="demo">Demo library</SelectItem>
-        <SelectItem value="real">Zotero (live)</SelectItem>
-      </SelectContent>
-    </Select>
-  )
-}
   const mode = useSettings((state) => state.mode)
   const setMode = useSettings((state) => state.setMode)
   return (
@@ -50,51 +27,8 @@ export function ModeToggle() {
 }
 
 export function ConnectionBadge() {
-  const { mode, setMode } = useMode()
-  return (
-    <Select
-      className="w-[140px]"
-      value={mode}
-      onValueChange={(next) => setMode(next)}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder="Mode" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="demo">Demo library</SelectItem>
-        <SelectItem value="real">Zotero (live)</SelectItem>
-      </SelectContent>
-    </Select>
-  )
-}
-
-  if (mode === 'demo') {
-    return (
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button size="sm" variant="outline">
-            Demo library <ArrowRight />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end">
-          <p>Die Demo-Bibliothek enthält keine Anmerkungen (Annotationen). Wechsle zurück zu Zotero, um Highlights zu sehen.</p>
-          <Button onClick={() => setMode('demo' as SourceMode)}>Use demo mode</Button>
-        </PopoverContent>
-      </Popover>
-    )
-  }
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge variant="outline" className="cursor-pointer text-nowrap" onClick={() => setMode('local' as SourceMode)}>
-            <CircleAlert className="text-muted-foreground!" />
-            Demo library · click to go live
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent align="end">Browsing the bundled fixtures — click to reconnect to Zotero</TooltipContent>
-      </Tooltip>
-    )
-  }
+  const connection = useZoteroConnection()
+  const info = connection.data
 
   if (connection.isLoading) {
     return (
@@ -116,9 +50,11 @@ export function ConnectionBadge() {
         </TooltipTrigger>
         <TooltipContent align="end" className="max-w-72 flex-col text-wrap">
           <p>
-            Zotero is not reachable. In Zotero 7: Settings → Advanced → check
-            &ldquo;Allow other applications on this computer to communicate with
-            Zotero&rdquo;.
+            Zotero ist nicht erreichbar. In Zotero: Einstellungen → Erweitert →
+            „Allow other applications on this computer to communicate with
+            Zotero“ und den Boolean
+            <code>extensions.zotero.httpServer.localAPI.enabled = true</code>
+            setzen, dann Zotero neu starten.
           </p>
           <ModeToggle />
         </TooltipContent>
@@ -137,7 +73,11 @@ export function ConnectionBadge() {
           )}
         </Badge>
       </TooltipTrigger>
-      <TooltipContent align="end">{info.message ?? 'Local API connected'}</TooltipContent>
+      <TooltipContent align="end">
+        {info.source === 'demo'
+          ? 'Browsing the bundled fixtures — use the plug button to reconnect to Zotero'
+          : (info.message ?? 'Local API connected')}
+      </TooltipContent>
     </Tooltip>
   )
 }

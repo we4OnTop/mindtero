@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Gate: only this exact repository may run builds. Forks get skipped.
+concurrency:
+  group: ci-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    if: github.repository == 'we4OnTop/mindtero'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: node node_modules/typescript/bin/tsc -b
+      - name: Test
+        run: npx vitest run
+      - name: Production build
+        run: npm run build

@@ -35,12 +35,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PREV=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
+          # Highest existing tag by version, not the nearest ancestor: release tags
+          # can sit on commits that are no longer in main's history, and
+          # `git describe` then falls back to an older tag and re-releases it.
+          PREV=$(git tag --list "v*" --sort=-v:refname | head -n 1)
+          PREV=${PREV:-v0.0.0}
           NEXT=$(PREV="$PREV" node -e '
             const v = process.env.PREV.replace(/^v/, "");
             const [major, minor, patch] = v.split(".");
             process.stdout.write(`v${major}.${minor}.${Number(patch) + 1}`);
           ')
+          if git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; then
+            echo "::error::Tag $NEXT already exists — refusing to overwrite an existing release"
+            exit 1
+          fi
+          echo "Releasing $NEXT (previous: $PREV)"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
 
       - name: Bump package.json version
@@ -61,7 +70,11 @@ jobs:
         run: npm ci
 
       - name: Lint, typecheck and test
+        # bash with -e: in pwsh a failing native command does not stop the step,
+        # so a lint failure would have been ignored.
+        shell: bash
         run: |
+          set -euo pipefail
           npm run lint
           node node_modules/typescript/bin/tsc -b
           npx vitest run
@@ -72,15 +85,18 @@ jobs:
       - name: Commit version bump
         env:
           VERSION: ${{ steps.version.outputs.next }}
+        # bash, not pwsh: the ${OWNER_LOGIN} syntax is empty in PowerShell, which left
+        # git without an identity and silently skipped the commit.
+        shell: bash
         run: |
-          git config user.name "${OWNER_LOGIN}"
-          git config user.email "${OWNER_ID}+${OWNER_LOGIN}@users.noreply.github.com"
+          set -euo pipefail
+          git config user.name "$OWNER_LOGIN"
+          git config user.email "$OWNER_ID+$OWNER_LOGIN@users.noreply.github.com"
           git add package.json
-          if (!(git diff --cached --quiet)) {
-            git commit -m "chore(release): bump to $($VERSION -replace '^v', '')"
-          }
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): bump to ${VERSION#v}"
+          fi
           git push
-        shell: pwsh
 
       - name: Package exe installer
         run: npx electron-builder --win portable --publish never

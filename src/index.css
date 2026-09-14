@@ -185,33 +185,49 @@
     opacity: 1;
 }
 
-.react-flow__handle:hover {
-    background: var(--primary);
-    transform: scale(1.25);
-}
-
-/* Invisible, oversized grab zones along each card edge: connections can be
-   started from anywhere on the boundary. They stay fully transparent so only
-   the small dot handles hint where connections attach. */
-.mindtero-handle-zone {
+/* Side handles: an invisible band straddling the card border that carries its
+   own dot in ::after. One element does both the hit-testing and the hint, so
+   there is no sibling selector that can hide the dot you are aiming at. The
+   band itself never paints — only the dot does. */
+.mindtero-handle {
     border: none !important;
     background: transparent !important;
-    border-radius: 14px !important;
-    opacity: 0 !important;
-    min-width: 36px;
-    min-height: 36px;
-    pointer-events: all;
-    /* transform: none keeps the zone aligned with the card border. */
+    border-radius: 10px !important;
+    min-width: 0;
+    min-height: 0;
+    opacity: 1 !important;
+    /* transform: none keeps the band aligned with the border it straddles. */
     transform: none !important;
 }
 
-.mindtero-handle-zone:hover ~ .mindtero-handle-dot,
-.react-flow__node:hover .mindtero-handle-zone:hover {
+.mindtero-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    margin-top: -4.5px;
+    margin-left: -4.5px;
+    border-radius: 9999px;
+    border: 1.5px solid var(--background);
+    background: var(--muted-foreground);
     opacity: 0;
+    transition:
+        opacity 120ms ease,
+        background-color 120ms ease,
+        scale 120ms ease;
 }
 
-.react-flow__node:hover .mindtero-handle-dot {
+.react-flow__node:hover .mindtero-handle::after,
+.react-flow__node.selected .mindtero-handle::after {
     opacity: 1;
+}
+
+.mindtero-handle:hover::after {
+    opacity: 1;
+    background: var(--primary);
+    scale: 1.3;
 }
 
 .react-flow__edge-path {
@@ -255,7 +271,207 @@
     overflow-wrap: anywhere;
 }
 
+/* Textareas that grow with their content, so cards size to the text. */
+.mindtero-autogrow {
+    field-sizing: content;
+}
+
+/* --- Canvas tools: one cursor per job ----------------------------------- */
+
+/* Select: a plain arrow everywhere; "move" only while something is dragged. */
+.mindtero-tool-select .react-flow__pane,
+.mindtero-tool-select .react-flow__node {
+    cursor: default;
+}
+
+.mindtero-tool-select .react-flow__node.dragging,
+.mindtero-tool-select .react-flow__node.dragging * {
+    cursor: move !important;
+}
+
+/* Hand: the canvas and everything on it is grabbed. */
+.mindtero-tool-hand .react-flow__pane,
+.mindtero-tool-hand .react-flow__node,
+.mindtero-tool-hand .react-flow__node * {
+    cursor: grab !important;
+}
+
+.mindtero-tool-hand .react-flow__pane.dragging,
+.mindtero-tool-hand .react-flow__pane.dragging * {
+    cursor: grabbing !important;
+}
+
+/* Hand tool must not start connections or show connection dots. */
+.mindtero-tool-hand .mindtero-handle,
+.mindtero-tool-note .mindtero-handle,
+.mindtero-tool-claim .mindtero-handle,
+.mindtero-tool-question .mindtero-handle,
+.mindtero-tool-tagGroup .mindtero-handle,
+.mindtero-tool-richText .mindtero-handle,
+.mindtero-tool-frame .mindtero-handle,
+.mindtero-tool-timeline .mindtero-handle {
+    pointer-events: none;
+}
+
+.mindtero-tool-hand .mindtero-handle::after,
+.mindtero-tool-note .mindtero-handle::after,
+.mindtero-tool-claim .mindtero-handle::after,
+.mindtero-tool-question .mindtero-handle::after,
+.mindtero-tool-tagGroup .mindtero-handle::after,
+.mindtero-tool-richText .mindtero-handle::after,
+.mindtero-tool-frame .mindtero-handle::after,
+.mindtero-tool-timeline .mindtero-handle::after {
+    opacity: 0 !important;
+}
+
+/* Placement tools: crosshair on empty canvas and inside group frames. */
+.mindtero-tool-note .react-flow__pane,
+.mindtero-tool-claim .react-flow__pane,
+.mindtero-tool-question .react-flow__pane,
+.mindtero-tool-tagGroup .react-flow__pane,
+.mindtero-tool-richText .react-flow__pane,
+.mindtero-tool-frame .react-flow__pane,
+.mindtero-tool-timeline .react-flow__pane,
+.mindtero-tool-note .react-flow__node-frame,
+.mindtero-tool-richText .react-flow__node-frame,
+.mindtero-tool-timeline .react-flow__node-frame,
+.mindtero-tool-claim .react-flow__node-frame,
+.mindtero-tool-question .react-flow__node-frame {
+    cursor: crosshair;
+}
+
+/* Connection bands: a crosshair says "drag from here to link". */
+.mindtero-tool-select .mindtero-handle {
+    cursor: crosshair;
+}
+
+/* Text being edited always shows the text cursor. */
+.react-flow__node textarea,
+.react-flow__node input[type='text'],
+.react-flow__node .ProseMirror[contenteditable='true'] {
+    cursor: text;
+}
+
+/* Width-only resize grips on auto-height cards. */
+.react-flow__resize-control.line.mindtero-width-grip {
+    border-color: color-mix(in oklab, var(--primary) 45%, transparent);
+    cursor: ew-resize;
+}
+
+/* --- Rich text blocks ---------------------------------------------------- */
+
+.mindtero-prose .ProseMirror {
+    outline: none;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.mindtero-prose .ProseMirror > * + * {
+    margin-top: 0.5em;
+}
+
+.mindtero-prose h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.mindtero-prose h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.mindtero-prose h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.mindtero-prose ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+}
+
+.mindtero-prose ol {
+    list-style: decimal;
+    padding-left: 1.25rem;
+}
+
+.mindtero-prose li > p {
+    margin: 0;
+}
+
+.mindtero-prose blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 0.75rem;
+    color: var(--muted-foreground);
+    font-style: italic;
+}
+
+.mindtero-prose code {
+    background: var(--muted);
+    border-radius: 0.25rem;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.8em;
+}
+
+.mindtero-prose a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.mindtero-prose hr {
+    border-color: var(--border);
+}
+
+.mindtero-prose .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: var(--muted-foreground);
+    opacity: 0.7;
+    float: left;
+    height: 0;
+    pointer-events: none;
+}
+
 @utility scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
+}
+
+/* --- Gap view ------------------------------------------------------------ */
+
+/* Everything that is not a weak spot steps back… */
+.react-flow__node.mindtero-dim {
+    opacity: 0.32;
+    transition: opacity 160ms ease;
+}
+
+.react-flow__node.mindtero-dim:hover {
+    opacity: 0.8;
+}
+
+/* …and the weak spots get a warning outline. */
+.react-flow__node.mindtero-gap {
+    outline: 2px dashed var(--destructive);
+    outline-offset: 5px;
+    border-radius: 14px;
+}
+
+/* --- Timeline hover ------------------------------------------------------- */
+
+/* Hovering a Gantt bar lights up the source card it stands for… */
+.react-flow__node.mindtero-highlight {
+    outline: 3px solid var(--primary);
+    outline-offset: 4px;
+    border-radius: 14px;
+    z-index: 2000 !important;
+    opacity: 1 !important;
+}
+
+/* …and the line that connects it to the timeline. */
+.react-flow__edge.mindtero-edge-highlight .react-flow__edge-path {
+    stroke: var(--primary) !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 4px var(--ring));
 }

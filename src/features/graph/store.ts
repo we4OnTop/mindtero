@@ -12,6 +12,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import { idbStorage } from '@/lib/idb-storage'
+import { normalizeBoard } from './board-io'
 import { DEFAULT_RELATION, type RelationKind } from './relations'
 import {
   nodeId,
@@ -21,6 +22,7 @@ import {
   type ItemSnapshot,
   type MindEdge,
   type MindNode,
+  type RelationEdgeData,
 } from './types'
 
 const HISTORY_LIMIT = 60
@@ -48,13 +50,19 @@ export interface BoardsState {
   updateBoardMeta: (id: string, patch: Partial<Pick<Board, 'name' | 'description'>>) => void
   duplicateBoard: (id: string) => string | null
   importBoard: (board: Board) => string
+  /**
+   * Inserts boards under their *own* ids, replacing a local copy only when the
+   * incoming one is newer. Used to load project files and recovered boards, where
+   * a board must stay the same board rather than become a duplicate.
+   */
+  mergeBoards: (boards: Board[]) => { added: string[]; updated: string[] }
   setActiveBoard: (id: string | null) => void
   ensureBoard: () => string
 
   setViewport: (viewport: Viewport) => void
   onNodesChange: (changes: NodeChange<MindNode>[]) => void
   onEdgesChange: (changes: EdgeChange<MindEdge>[]) => void
-  onConnect: (connection: Connection, kind?: RelationKind) => void
+  onConnect: (connection: Connection, kind?: RelationKind, data?: Partial<RelationEdgeData>) => void
 
   addNodes: (nodes: MindNode[]) => void
   addEdges: (edges: MindEdge[]) => void
@@ -68,6 +76,12 @@ export interface BoardsState {
   refreshSnapshots: (snapshots: Record<string, ItemSnapshot>) => void
 
   commit: () => void
+  /**
+   * Undoes the most recent `commit` without touching the board. Used when an
+   * interaction that pre-emptively committed (a node drag) turns out to have
+   * changed nothing, so a plain click never costs an undo step.
+   */
+  dropLastHistory: () => void
   undo: () => void
   redo: () => void
   canUndo: (boardId: string | null) => boolean
@@ -185,13 +199,37 @@ export const useBoards = create<BoardsState>()(
         },
 
         importBoard: (board) => {
-          const imported: Board = { ...board, id: nanoid(10), updatedAt: now() }
+          const imported: Board = { ...normalizeBoard(board), id: nanoid(10), updatedAt: now() }
           set((state) => ({
             boards: { ...state.boards, [imported.id]: imported },
             order: [imported.id, ...state.order],
             activeBoardId: imported.id,
           }))
           return imported.id
+        },
+
+        mergeBoards: (incoming) => {
+          const added: string[] = []
+          const updated: string[] = []
+          set((state) => {
+            const boards = { ...state.boards }
+            const order = [...state.order]
+            for (const raw of incoming) {
+              if (!raw || typeof raw.id !== 'string') continue
+              const board = normalizeBoard(raw)
+              const local = boards[board.id]
+              if (!local) {
+                boards[board.id] = board
+                if (!order.includes(board.id)) order.push(board.id)
+                added.push(board.id)
+              } else if (board.updatedAt > local.updatedAt) {
+                boards[board.id] = board
+                updated.push(board.id)
+              }
+            }
+            return added.length || updated.length ? { boards, order } : state
+          })
+          return { added, updated }
         },
 
         setActiveBoard: (id) => set({ activeBoardId: id }),
@@ -232,7 +270,7 @@ export const useBoards = create<BoardsState>()(
           }))
         },
 
-        onConnect: (connection, kind = DEFAULT_RELATION) => {
+        onConnect: (connection, kind = DEFAULT_RELATION, extra) => {
           pushHistory()
           mutateActive((board) => ({
             nodes: board.nodes,
@@ -241,7 +279,7 @@ export const useBoards = create<BoardsState>()(
                 ...connection,
                 id: `edge:${nanoid(8)}`,
                 type: 'relation',
-                data: { kind },
+                data: { ...extra, kind },
               },
               board.edges,
             ),
@@ -328,6 +366,20 @@ export const useBoards = create<BoardsState>()(
 
         commit: pushHistory,
 
+        dropLastHistory: () =>
+          set((state) => {
+            const id = state.activeBoardId
+            if (!id) return state
+            const entry = state.history[id]
+            if (!entry?.past.length) return state
+            return {
+              history: {
+                ...state.history,
+                [id]: { ...entry, past: entry.past.slice(0, -1) },
+              },
+            }
+          }),
+
         undo: () => {
           const { activeBoardId, boards, history } = get()
           if (!activeBoardId) return
@@ -377,7 +429,16 @@ export const useBoards = create<BoardsState>()(
     },
     {
       name: 'mindtero.boards',
-      version: 1,
+      // v2: auto-height cards no longer store a fixed height (see board-io.ts).
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as Partial<Pick<BoardsState, 'boards' | 'order' | 'activeBoardId'>>
+        const boards: Record<string, Board> = {}
+        for (const [id, board] of Object.entries(state.boards ?? {})) {
+          if (board) boards[id] = normalizeBoard(board)
+        }
+        return { ...state, boards } as BoardsState
+      },
       storage: createJSONStorage(() => idbStorage),
       partialize: ({ boards, order, activeBoardId }) => ({ boards, order, activeBoardId }),
     },

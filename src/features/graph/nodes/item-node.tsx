@@ -22,6 +22,7 @@ import { accentClasses } from '../accents'
 import { EXPANSIONS, useExpandNode, type ExpansionKind } from '../expand'
 import { AccentMenuItems } from './accent-menu'
 import { EdgeZones } from './handles'
+import { NodeTags } from './node-tags'
 import { useBoards } from '../store'
 import type { ItemNode } from '../types'
 
@@ -201,6 +202,8 @@ function ItemNodeComponent({
               )}
             </>
           )}
+          {/* Board tags and tag-group tags; Zotero's own tags are listed above. */}
+          <NodeTags id={id} own={data.tags} max={3} />
         </div>
       </div>
 

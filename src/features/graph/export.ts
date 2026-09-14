@@ -1,6 +1,9 @@
 import { getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import { toPng } from 'html-to-image'
+import { serializeBoardFile } from './board-io'
 import type { Board, ItemNodeData, MindNode } from './types'
+
+export { BOARD_FILE_VERSION } from './board-io'
 
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
@@ -21,32 +24,11 @@ export function slugify(value: string): string {
   )
 }
 
-export const BOARD_FILE_VERSION = 1
-
 export function exportBoardJson(board: Board): void {
-  const payload = {
-    format: 'mindtero.board',
-    version: BOARD_FILE_VERSION,
-    exportedAt: new Date().toISOString(),
-    board,
-  }
   downloadBlob(
-    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    new Blob([serializeBoardFile(board)], { type: 'application/json' }),
     `${slugify(board.name)}.mindtero.json`,
   )
-}
-
-export function parseBoardFile(text: string): Board {
-  const parsed: unknown = JSON.parse(text)
-  const candidate = parsed as { format?: string; board?: Board }
-  if (candidate?.format !== 'mindtero.board' || !candidate.board) {
-    throw new Error('Not a Mindtero board file')
-  }
-  const board = candidate.board
-  if (!Array.isArray(board.nodes) || !Array.isArray(board.edges)) {
-    throw new Error('Board file is missing nodes or edges')
-  }
-  return board
 }
 
 const PNG_WIDTH = 2400

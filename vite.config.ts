@@ -1,7 +1,13 @@
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, type ProxyOptions } from 'vite'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
+
+const require = createRequire(import.meta.url)
+const { serveZoteroFile } = require('./electron/zotero-file.cjs') as {
+  serveZoteroFile: (req: unknown, res: unknown, zoteroTarget: string) => boolean
+}
 
 /**
  * Zotero's local HTTP API (Zotero 7+) does not emit CORS headers, so browser
@@ -25,9 +31,30 @@ const proxyConfig = {
   },
 } satisfies ProxyOptions
 
+/**
+ * Zotero answers attachment-file requests with a redirect to file://, which the
+ * browser cannot follow; the shared handler streams the file instead. Registered
+ * as middleware so it runs before the generic proxy.
+ */
+function zoteroFiles(): Plugin {
+  return {
+    name: 'mindtero-zotero-files',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!serveZoteroFile(req, res, ZOTERO_TARGET)) next()
+      })
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!serveZoteroFile(req, res, ZOTERO_TARGET)) next()
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), zoteroFiles()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

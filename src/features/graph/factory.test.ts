@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createTagFrame, frameBounds } from './factory'
+import { createTagFrame, frameBounds, nextQuestionCode } from './factory'
 
 describe('frameBounds', () => {
   it('wraps all nodes with padding', () => {
@@ -30,5 +30,12 @@ describe('createTagFrame', () => {
     expect(group.frame.zIndex).toBe(-1)
     expect(group.tagNode.id).toBe('tag:agency')
     expect(group.edges.map((edge) => edge.target)).toEqual(['item:ABC', 'note:1'])
+  })
+})
+
+describe('nextQuestionCode', () => {
+  it('continues after the highest research question number', () => {
+    expect(nextQuestionCode([])).toBe('RQ1')
+    expect(nextQuestionCode(['RQ1', 'rq3', 'Sub-question'])).toBe('RQ4')
   })
 })

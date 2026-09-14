@@ -210,6 +210,15 @@ function RelationEdgeComponent({
   const [dragging, setDragging] = useState(false)
 
   const shape = resolveShape(data?.shape, globalShape)
+
+  // Group links read as structure, so they are drawn heavier than card links.
+  const derivedCount = data?.derived?.count
+  const touchesFrame = sourceNode?.type === 'frame' || targetNode?.type === 'frame'
+  const baseWidth = derivedCount
+    ? Math.min(3.5 + Math.log2(derivedCount) * 1.5, 9)
+    : touchesFrame
+      ? spec.strokeWidth + 2
+      : spec.strokeWidth
   const [path, labelX, labelY] = buildPath(
     shape,
     sourceAnchor,
@@ -221,7 +230,13 @@ function RelationEdgeComponent({
 
   // Untyped "related" edges stay unlabelled to keep dense boards readable; selecting
   // one reveals the chip so its type can still be changed.
-  const label = data?.label ?? (spec.kind === 'related' ? '' : spec.label)
+  // Timeline lines show the period they carry.
+  const periodLabel = data?.period
+    ? data.period.from === data.period.to
+      ? String(data.period.from)
+      : `${Math.min(data.period.from, data.period.to)}–${Math.max(data.period.from, data.period.to)}`
+    : ''
+  const label = data?.label ?? (periodLabel || (spec.kind === 'related' ? '' : spec.label))
   const showLabel = Boolean(label) || selected
 
   const onBendPointerDown = (event: React.PointerEvent) => {
@@ -251,13 +266,25 @@ function RelationEdgeComponent({
         path={path}
         markerEnd={spec.marker === 'none' ? undefined : `url(#${markerId(spec.kind)})`}
         style={{
-          stroke: spec.color,
-          strokeWidth: selected ? spec.strokeWidth + 1 : spec.strokeWidth,
-          strokeDasharray: spec.dash || undefined,
+          stroke: derivedCount ? 'var(--foreground)' : spec.color,
+          strokeOpacity: derivedCount ? 0.55 : undefined,
+          strokeWidth: selected ? baseWidth + 1 : baseWidth,
+          strokeDasharray: derivedCount ? undefined : spec.dash || undefined,
         }}
       />
 
-      {showLabel && (
+      {derivedCount && (
+        <EdgeLabelRenderer>
+          <span
+            className="bg-background/90 text-muted-foreground pointer-events-none absolute rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          >
+            {derivedCount} connection{derivedCount === 1 ? '' : 's'}
+          </span>
+        </EdgeLabelRenderer>
+      )}
+
+      {showLabel && !derivedCount && (
         <EdgeLabelRenderer>
           <div
             className="nodrag nopan absolute flex items-center gap-1"

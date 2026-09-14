@@ -2,76 +2,66 @@ import { Handle, Position } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 
 /**
- * Connection affordances shared by every card-like node:
+ * Connection affordances shared by every card-like node.
  *
- * - `dot` handles sit exactly on the card border and are the visible grab hint.
- * - `zone` handles are large invisible overlays along each edge so a connection
- *   can be started from anywhere near the card boundary, not just the dot.
+ * Each side is a *single* handle: a thin invisible band that straddles the card
+ * border, with the visible dot painted as its `::after`. Thinness is the whole
+ * point — React Flow starts a connection on any pointerdown that lands on a
+ * handle, so a handle that spreads across the card swallows the drags and
+ * clicks meant for the node itself and the card stops being movable.
+ *
+ * The bands also stop short of the corners, which keeps `NodeResizer`'s grips
+ * reachable.
  */
 
-type Side = { id: string; position: Position; zoneStyle: CSSProperties }
+/** Chips are only a couple of dozen pixels tall, so they take a slimmer band. */
+export type HandleSize = 'card' | 'chip'
 
-const SIDES: Side[] = [
-  {
-    id: 'top',
-    position: Position.Top,
-    // Explicit width/height (not opposing insets): React Flow's handle CSS sets
-    // a 6px default size that beats insets, so a zone would shrink to min-width.
-    zoneStyle: { left: '12%', top: '-8px', width: '76%', height: '42%', borderRadius: 12 },
-  },
-  {
-    id: 'right',
-    position: Position.Right,
-    zoneStyle: { top: '12%', right: '-8px', width: '42%', height: '76%', borderRadius: 12 },
-  },
-  {
-    id: 'bottom',
-    position: Position.Bottom,
-    zoneStyle: { left: '12%', bottom: '-8px', width: '76%', height: '42%', borderRadius: 12 },
-  },
-  {
-    id: 'left',
-    position: Position.Left,
-    zoneStyle: { top: '12%', left: '-8px', width: '42%', height: '76%', borderRadius: 12 },
-  },
-]
+/** Band thickness in px, straddling the border half in / half out. */
+export const BAND_THICKNESS: Record<HandleSize, number> = { card: 18, chip: 10 }
 
-/** A full-card invisible handle: connections start from any pixel of the card. */
-export function BodyHandle() {
-  return (
-    <Handle
-      id="body"
-      type="source"
-      position={Position.Top}
-      className="!transform-none !border-transparent !bg-transparent !opacity-100 mindtero-handle-body"
-      style={{ inset: 0, width: '100%', height: '100%', borderRadius: 14 }}
-    />
-  )
+/** Percentage of each border a band covers, centred. */
+export const BAND_SPAN = 68
+
+export interface HandleBand {
+  id: 'top' | 'right' | 'bottom' | 'left'
+  position: Position
+  style: CSSProperties
 }
 
-export function EdgeZones() {
+/**
+ * Geometry for the four bands. Kept pure and exported so the free (draggable)
+ * area of a card can be asserted in tests rather than discovered by hand.
+ */
+export function handleBands(size: HandleSize): HandleBand[] {
+  const thickness = BAND_THICKNESS[size]
+  const offset = -thickness / 2
+  const span = `${BAND_SPAN}%`
+  const inset = `${(100 - BAND_SPAN) / 2}%`
+
+  // Explicit width/height (not opposing insets): React Flow's handle CSS sets a
+  // default size that beats insets, so a band would shrink to its min-width.
+  return [
+    { id: 'top', position: Position.Top, style: { left: inset, width: span, top: offset, height: thickness } },
+    { id: 'right', position: Position.Right, style: { top: inset, height: span, right: offset, width: thickness } },
+    { id: 'bottom', position: Position.Bottom, style: { left: inset, width: span, bottom: offset, height: thickness } },
+    { id: 'left', position: Position.Left, style: { top: inset, height: span, left: offset, width: thickness } },
+  ]
+}
+
+export function EdgeZones({ size = 'card' }: { size?: HandleSize }) {
   return (
     <>
-      {SIDES.map((side) => (
+      {handleBands(size).map((band) => (
         <Handle
-          key={side.id}
-          id={side.id}
+          key={band.id}
+          id={band.id}
           type="source"
-          position={side.position}
-          className="mindtero-handle-zone"
-          style={side.zoneStyle}
-        />
-      ))}
-      {SIDES.map((side) => (
-        <Handle
-          key={`${side.id}-dot`}
-          id={side.id}
-          type="source"
-          position={side.position}
-          className="mindtero-handle-dot"
+          position={band.position}
+          className="mindtero-handle"
+          style={band.style}
         />
       ))}
     </>
   )
 }
-

@@ -1,4 +1,4 @@
-import { Layers, MousePointerClick, Tags, Trash2 } from 'lucide-react'
+import { BookOpen, Layers, MousePointerClick, Tags, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -10,13 +10,17 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/lib/settings'
+import { openExternal } from '@/lib/desktop'
+import { quoteOpenPdfUrl } from '../quote-parse'
 import { ACCENT_CLASSES, ACCENT_LABELS } from '../accents'
 import { createTagFrame, frameBounds } from '../factory'
 import { EDGE_SHAPES, EDGE_SHAPE_LABELS } from '../types'
 import { RELATIONS, RELATION_KINDS } from '../relations'
 import { useActiveBoard, useBoards } from '../store'
 import { ACCENTS, type Accent, type MindEdge, type MindNode } from '../types'
+import { ClaimInspector, GapList, QuestionInspector, TagEditor } from './argument-inspectors'
 import { ItemInspector } from './item-inspector'
+import { PeriodEditor } from './period-editor'
 
 function AccentPicker({
   value,
@@ -46,9 +50,23 @@ function AccentPicker({
 
 function NoteInspector({ node }: { node: Extract<MindNode, { type: 'note' }> }) {
   const updateNodeData = useBoards((state) => state.updateNodeData)
+  const pdfUrl = quoteOpenPdfUrl(node.data)
+  const isQuote = Boolean(node.data.citation ?? node.data.sourceTitle ?? node.data.page)
   return (
     <div className="space-y-4 p-4">
-      <h2 className="text-base font-semibold">Note</h2>
+      <h2 className="text-base font-semibold">{isQuote ? 'Quote' : 'Note'}</h2>
+      {isQuote && (
+        <div className="bg-muted/50 space-y-1 rounded-lg p-2.5 text-xs">
+          {node.data.citation && <p className="font-medium">{node.data.citation}</p>}
+          {node.data.sourceTitle && <p className="text-muted-foreground">{node.data.sourceTitle}</p>}
+          {node.data.page && !node.data.citation && <p className="text-muted-foreground">p. {node.data.page}</p>}
+          {pdfUrl && (
+            <Button size="xs" variant="outline" className="mt-1" onClick={() => openExternal(pdfUrl)}>
+              <BookOpen /> Open PDF{node.data.pdfPage ? ` at page ${node.data.pdfPage}` : ''}
+            </Button>
+          )}
+        </div>
+      )}
       <Textarea
         value={node.data.text}
         onChange={(event) => updateNodeData(node.id, { text: event.target.value })}
@@ -62,6 +80,7 @@ function NoteInspector({ node }: { node: Extract<MindNode, { type: 'note' }> }) 
           onChange={(accent) => updateNodeData(node.id, { accent })}
         />
       </div>
+      <TagEditor node={node} />
     </div>
   )
 }
@@ -100,6 +119,8 @@ function EdgeInspector({ edge }: { edge: MindEdge }) {
   return (
     <div className="space-y-4 p-4">
       <h2 className="text-base font-semibold">Connection</h2>
+
+      <PeriodEditor edge={edge} />
 
       <div className="space-y-1.5">
         <Label className="text-muted-foreground text-xs">Your label on the line</Label>
@@ -292,6 +313,11 @@ function BoardSummary() {
     creator: 'Authors',
     collection: 'Collections',
     frame: 'Frames',
+    image: 'Images',
+    richText: 'Text blocks',
+    timeline: 'Timelines',
+    claim: 'Claims',
+    question: 'Research questions',
   }
 
   return (
@@ -319,16 +345,37 @@ function BoardSummary() {
 
       <Separator />
 
+      <GapList />
+
+      <Separator />
+
       <section className="text-muted-foreground space-y-2 text-xs leading-relaxed">
         <p className="text-foreground flex items-center gap-1.5 font-medium">
           <Layers className="size-3.5" /> Quick moves
         </p>
         <ul className="list-inside list-disc space-y-1">
           <li>Drag items from the library onto the canvas.</li>
-          <li>Double-click the canvas to drop a note.</li>
+          <li>
+            Pick a tool — <kbd className="bg-muted rounded px-1">N</kbd> note,{' '}
+            <kbd className="bg-muted rounded px-1">C</kbd> claim,{' '}
+            <kbd className="bg-muted rounded px-1">Q</kbd> research question,{' '}
+            <kbd className="bg-muted rounded px-1">T</kbd> text block,{' '}
+            <kbd className="bg-muted rounded px-1">F</kbd> frame,{' '}
+            <kbd className="bg-muted rounded px-1">G</kbd> tag group,{' '}
+            <kbd className="bg-muted rounded px-1">L</kbd> timeline — and click the canvas.{' '}
+            <kbd className="bg-muted rounded px-1">V</kbd> selects,{' '}
+            <kbd className="bg-muted rounded px-1">Space</kbd> + drag pans.
+          </li>
+          <li>Drag or paste a quote from Zotero's PDF reader onto the canvas: it becomes a quote card that reopens the PDF at that spot.</li>
+          <li>Switch between Groups / Group contents / Everything (under the toolbar) to zoom out of the details.</li>
           <li>Drag from anywhere on a card's edge to another card to connect them.</li>
           <li>Select a card and use Expand for related items — or “PDF highlights” to pull quote cards out of its annotations.</li>
           <li>Select several nodes and use “Group under a tag” to bundle them.</li>
+          <li>Connect quotes to a claim: the line starts as “Supports”; the claim card counts its evidence.</li>
+          <li>
+            Press <kbd className="bg-muted rounded px-1">Ctrl</kbd>+
+            <kbd className="bg-muted rounded px-1">F</kbd> to search this board — <code>#tag</code> filters by tag.
+          </li>
           <li>
             Press <kbd className="bg-muted rounded px-1">Ctrl</kbd>+
             <kbd className="bg-muted rounded px-1">K</kbd> to search Zotero from anywhere.
@@ -352,6 +399,15 @@ export function InspectorPanel() {
     if (node.type === 'zoteroItem') content = <ItemInspector node={node} />
     else if (node.type === 'note') content = <NoteInspector node={node} />
     else if (node.type === 'image') content = <ImageInspector node={node} />
+    else if (node.type === 'claim') content = <ClaimInspector node={node} />
+    else if (node.type === 'question') content = <QuestionInspector node={node} />
+    else if (node.type === 'richText')
+      content = (
+        <div className="space-y-4 p-4">
+          <h2 className="text-base font-semibold">Text block</h2>
+          <TagEditor node={node} />
+        </div>
+      )
     else content = <BoardSummary />
   } else if (selectedEdges.length === 1) {
     content = <EdgeInspector edge={selectedEdges[0]!} />

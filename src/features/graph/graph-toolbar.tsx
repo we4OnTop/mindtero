@@ -6,18 +6,25 @@ import {
   Download,
   FileJson,
   Frame,
+  GanttChart,
+  Hand,
+  HelpCircle,
+  Scale,
+  Tags,
   Image,
   ImagePlus,
   LayoutGrid,
   Maximize2,
+  MousePointer2,
   Quote,
   Redo2,
   Route,
   StickyNote,
+  Type,
   Undo2,
   Wand2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -33,13 +40,57 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useZoteroSource } from '@/features/zotero/provider'
 import { useSettings } from '@/lib/settings'
-import { createImageNode } from './factory'
+import { cn } from '@/lib/utils'
+import { effectiveTool, PLACEMENT_TOOLS, TOOL_SHORTCUTS, useCanvasUi, type Tool } from './canvas-ui'
+import { createImageNode, NODE_SIZE } from './factory'
 import { EDGE_SHAPES, EDGE_SHAPE_LABELS, type EdgeShape } from './types'
-import { createFrameNode, createNoteNode, NODE_SIZE } from './factory'
 import { bibliographyHtml, boardItemKeys, downloadBlob, exportBoardJson, exportBoardPng, slugify } from './export'
 import { layoutGraph, layoutGrid, type LayoutDirection } from './layout'
 import { useActiveBoard, useBoards } from './store'
 import type { MindEdge, MindNode } from './types'
+
+const TOOL_BUTTONS: { tool: Tool; icon: ReactNode; label: string }[] = [
+  { tool: 'select', icon: <MousePointer2 />, label: 'Select & edit' },
+  { tool: 'hand', icon: <Hand />, label: 'Move the canvas (or hold Space)' },
+  { tool: 'note', icon: <StickyNote />, label: 'Note — click the canvas to place' },
+  { tool: 'claim', icon: <Scale />, label: 'Claim — a statement your evidence supports or contradicts' },
+  { tool: 'question', icon: <HelpCircle />, label: 'Research question — connect claims and sources to it' },
+  { tool: 'richText', icon: <Type />, label: 'Rich text block — click the canvas to place' },
+  { tool: 'frame', icon: <Frame />, label: 'Group frame — click the canvas to place' },
+  { tool: 'tagGroup', icon: <Tags />, label: 'Tag group — every card inside gets its tag' },
+  { tool: 'timeline', icon: <GanttChart />, label: 'Research timeline — click the canvas to place' },
+]
+
+function ToolButtons() {
+  const tool = useCanvasUi(effectiveTool)
+  const setTool = useCanvasUi((state) => state.setTool)
+  const viewOnly = useSettings((state) => state.viewOnly)
+  return (
+    <div role="radiogroup" aria-label="Canvas tool" className="flex items-center gap-0.5">
+      {TOOL_BUTTONS.map((entry) => (
+        <Tooltip key={entry.tool}>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon-sm"
+              variant={tool === entry.tool ? 'secondary' : 'ghost'}
+              role="radio"
+              aria-checked={tool === entry.tool}
+              aria-label={entry.label}
+              disabled={viewOnly && PLACEMENT_TOOLS.has(entry.tool)}
+              onClick={() => setTool(entry.tool)}
+              className={cn(tool === entry.tool && 'ring-primary/40 ring-1')}
+            >
+              {entry.icon}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {entry.label} <kbd className="bg-muted ml-1 rounded px-1">{TOOL_SHORTCUTS[entry.tool]}</kbd>
+          </TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  )
+}
 
 export function GraphToolbar() {
   const board = useActiveBoard()
@@ -118,27 +169,9 @@ export function GraphToolbar() {
 
   return (
     <div className="bg-card/95 flex items-center gap-0.5 rounded-xl border p-1 shadow-sm backdrop-blur">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => {
-              const center = centerOfView()
-              addNodes([
-                createNoteNode({
-                  x: center.x - NODE_SIZE.note.width / 2,
-                  y: center.y - NODE_SIZE.note.height / 2,
-                }),
-              ])
-            }}
-            aria-label="Add note"
-          >
-            <StickyNote />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Add a note — or double-click the canvas</TooltipContent>
-      </Tooltip>
+      <ToolButtons />
+
+      <Separator orientation="vertical" className="mx-1 !h-5" />
 
       <Tooltip>
         <TooltipTrigger asChild>
@@ -152,7 +185,7 @@ export function GraphToolbar() {
             <ImagePlus />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Add an image (also used by PDF page snaps)</TooltipContent>
+        <TooltipContent>Add an image — or drop / paste one onto the canvas</TooltipContent>
       </Tooltip>
       <input
         ref={setImageInput}
@@ -179,30 +212,6 @@ export function GraphToolbar() {
           reader.readAsDataURL(file)
         }}
       />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => {
-              const center = centerOfView()
-              addNodes([
-                createFrameNode({
-                  x: center.x - NODE_SIZE.frame.width / 2,
-                  y: center.y - NODE_SIZE.frame.height / 2,
-                }),
-              ])
-            }}
-            aria-label="Add frame"
-          >
-            <Frame />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Add a grouping frame</TooltipContent>
-      </Tooltip>
-
-      <Separator orientation="vertical" className="mx-1 !h-5" />
 
       <Separator orientation="vertical" className="mx-1 !h-5" />
 

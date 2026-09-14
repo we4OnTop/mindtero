@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Camera, ExternalLink, Link2, Plus, Quote, RefreshCw, StickyNote } from 'lucide-react'
+import { BookOpen, Camera, ExternalLink, Link2, Plus, Quote, RefreshCw, StickyNote } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { ItemTypeIcon } from '@/components/common/item-type-icon'
@@ -28,11 +28,14 @@ import {
   zoteroKeys,
 } from '@/features/zotero/queries'
 import { useSettings } from '@/lib/settings'
+import { openExternal } from '@/lib/desktop'
+import { quoteOpenPdfUrl } from '../quote-parse'
 import { createEdge, createImageNode, createItemNode, createQuoteNode, toSnapshot } from '../factory'
 import { ringPositions } from '../factory'
 import { fileAccessAvailable, renderPdfPage } from '../pdf-pages'
 import { useBoards } from '../store'
 import { nodeId, type ItemNode } from '../types'
+import { TagEditor } from './argument-inspectors'
 
 export function ItemInspector({ node }: { node: ItemNode }) {
   const source = useZoteroSource()
@@ -75,8 +78,11 @@ export function ItemInspector({ node }: { node: ItemNode }) {
   const [snapping, setSnapping] = useState<string | null>(null)
   const [pageInput, setPageInput] = useState('1')
 
+  const libraryScope = source.library.type === 'group' ? `groups/${source.library.id}` : 'library'
+
   const snapPage = async (attachmentKey: string) => {
     const pageNumber = Number.parseInt(pageInput, 10) || 1
+    if (viewOnly) return
     setSnapping(attachmentKey)
     try {
       const info = await renderPdfPage(source, attachmentKey, pageNumber)
@@ -115,7 +121,7 @@ export function ItemInspector({ node }: { node: ItemNode }) {
     const origin = { x: node.position.x, y: node.position.y }
     const positions = ringPositions(origin, picked.length)
     const nodes = picked.map((annotation, index) =>
-      createQuoteNode(annotation, snapshot.title, positions[index]!),
+      createQuoteNode(annotation, snapshot.title, positions[index]!, itemKey),
     )
     addNodes(nodes)
     addEdges(
@@ -176,6 +182,8 @@ export function ItemInspector({ node }: { node: ItemNode }) {
           className="min-h-20 text-sm"
         />
       </section>
+
+      <TagEditor node={node} />
 
       {isLoading && (
         <div className="space-y-2">
@@ -341,10 +349,27 @@ export function ItemInspector({ node }: { node: ItemNode }) {
                     size="sm"
                     variant="outline"
                     onClick={() => void snapPage(attachment.key)}
-                    disabled={snapping === attachment.key}
+                    disabled={viewOnly || snapping === attachment.key}
                     className="flex-1"
                   >
-                    <Camera /> Page {pageInput || '1'} to board
+                    <Camera className={snapping === attachment.key ? 'animate-pulse' : undefined} />
+                    {snapping === attachment.key ? 'Rendering…' : `Page ${pageInput || '1'} to board`}
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Open PDF at page ${pageInput || '1'}`}
+                    title="Open the PDF in Zotero at this page"
+                    onClick={() => {
+                      const url = quoteOpenPdfUrl({
+                        attachmentKey: attachment.key,
+                        libraryScope,
+                        pdfPage: Number.parseInt(pageInput, 10) || 1,
+                      })
+                      if (url) openExternal(url)
+                    }}
+                  >
+                    <BookOpen />
                   </Button>
                 </div>
               ))}

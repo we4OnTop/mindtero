@@ -3,10 +3,11 @@ import {
   Copy,
   FileInput,
   History,
+  PenLine,
   Plus,
   Trash2,
 } from 'lucide-react'
-import type { ChangeEvent, KeyboardEvent } from 'react'
+import { useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -30,9 +31,12 @@ import { useBoards } from '@/features/graph/store'
 import type { Board } from '@/features/graph/types'
 import { useShallow } from 'zustand/react/shallow'
 import { BOARD_FILE_VERSION, downloadBlob } from '@/features/graph/export'
+import { parseBoardsFile } from '@/features/graph/board-io'
+import { BoardNameInput } from '@/components/layout/board-name'
 import { cn } from '@/lib/utils'
+import { RescueDialog, StoragePanel } from './storage-panel'
 
-const ACCEPTED_TYPES = ['application/json']
+const ACCEPTED_TYPES = ['application/json', '.json']
 
 function relativeTime(iso: string): string {
   const delta = Date.now() - new Date(iso).getTime()
@@ -50,8 +54,10 @@ function BoardCard({ board }: { board: Board }) {
   const setActiveBoard = useBoards((state) => state.setActiveBoard)
   const deleteBoard = useBoards((state) => state.deleteBoard)
   const duplicateBoard = useBoards((state) => state.duplicateBoard)
+  const [renaming, setRenaming] = useState(false)
 
   const open = () => {
+    if (renaming) return
     setActiveBoard(board.id)
     navigate(`/boards/${board.id}`)
   }
@@ -87,7 +93,11 @@ function BoardCard({ board }: { board: Board }) {
           }}
         >
           <CardHeader>
-            <CardTitle className="truncate">{board.name}</CardTitle>
+            {renaming ? (
+              <BoardNameInput board={board} autoFocus onDone={() => setRenaming(false)} />
+            ) : (
+              <CardTitle className="truncate">{board.name}</CardTitle>
+            )}
             <CardDescription className="flex items-center gap-1.5 text-xs">
               <span
                 className={cn(
@@ -107,6 +117,9 @@ function BoardCard({ board }: { board: Board }) {
         </Card>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => setRenaming(true)}>
+          <PenLine /> Rename
+        </ContextMenuItem>
         <ContextMenuItem onSelect={copyJson}>
           <Clipboard /> Copy JSON to clipboard
         </ContextMenuItem>
@@ -119,26 +132,6 @@ function BoardCard({ board }: { board: Board }) {
       </ContextMenuContent>
     </ContextMenu>
   )
-}
-
-function useHiddenFileInput(onLoad: (board: Board) => void) {
-  const parse = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    void file.text().then((text) => {
-      try {
-        const parsed = JSON.parse(text) as Board
-        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.nodes)) {
-          throw new Error('Not a Mindtero board file')
-        }
-        onLoad(parsed)
-      } catch (error) {
-        toast.error('Import failed', { description: (error as Error).message })
-      }
-    })
-  }
-  return { ACCEPTED_TYPES, parse }
 }
 
 /** One file holding every board, to restore a library overlay later. */
@@ -184,35 +177,25 @@ function BoardGallery() {
   const createBoard = useBoards((state) => state.createBoard)
   const importBoard = useBoards((state) => state.importBoard)
   const navigate = useNavigate()
-  const { parse } = useHiddenFileInput((board) => {
-    const id = importBoard({ ...board, viewport: board.viewport ?? { x: 0, y: 0, zoom: 1 } })
-    toast.success('Board imported')
-    navigate(`/boards/${id}`)
-  })
 
-  // The same file input accepts single board files *and* whole-backup files.
-  const restoreAll = (event: ChangeEvent<HTMLInputElement>) => {
+  // Both buttons accept every Mindtero file shape: backups, desktop project
+  // files, exported boards and raw board JSON (see board-io.ts). Imports always
+  // get fresh ids, so restoring never overwrites a board that is already here.
+  const importFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
     void file.text().then((text) => {
       try {
-        const parsed = JSON.parse(text) as BackupFile | { format?: string }
-        if ((parsed as BackupFile).format === 'mindtero.backup') {
-          const backup = parsed as BackupFile
-          if (!Array.isArray(backup.boards)) throw new Error('Backup contains no boards')
-          const ids = backup.boards.map((board) =>
-            importBoard({ ...board, viewport: board.viewport ?? { x: 0, y: 0, zoom: 1 } }),
-          )
-          toast.success('Backup restored', { description: `${ids.length} board(s) imported` })
+        const { kind, boards: imported } = parseBoardsFile(text)
+        if (imported.length === 0) throw new Error('The file contains no boards')
+        const ids = imported.map((board) => importBoard(board))
+        if (ids.length === 1 && kind !== 'backup' && kind !== 'autosave') {
+          toast.success('Board imported')
+          navigate(`/boards/${ids[0]}`)
           return
         }
-        // Otherwise treat it like the plain JSON import.
-        if (!parsed || typeof parsed !== 'object' || !('nodes' in (parsed as object))) {
-          throw new Error('Not a Mindtero board file')
-        }
-        const id = importBoard(parsed as Board)
-        navigate(`/boards/${id}`)
+        toast.success('Backup restored', { description: `${ids.length} board(s) imported` })
       } catch (error) {
         toast.error('Import failed', { description: (error as Error).message })
       }
@@ -240,6 +223,9 @@ function BoardGallery() {
           </div>
         </header>
 
+        <StoragePanel />
+        <RescueDialog />
+
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button onClick={create}>
             <Plus /> New board
@@ -251,7 +237,7 @@ function BoardGallery() {
                 type="file"
                 accept={ACCEPTED_TYPES.join(',')}
                 className="sr-only"
-                onChange={parse}
+                onChange={importFile}
               />
             </label>
           </Button>
@@ -263,9 +249,9 @@ function BoardGallery() {
               <History /> Restore backup…
               <input
                 type="file"
-                accept="application/json"
+                accept={ACCEPTED_TYPES.join(',')}
                 className="sr-only"
-                onChange={restoreAll}
+                onChange={importFile}
               />
             </label>
           </Button>

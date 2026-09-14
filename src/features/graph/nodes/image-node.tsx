@@ -19,6 +19,7 @@ function isImageDataUrl(src: string): boolean {
 function ImageNodeComponent({ id, data, selected }: NodeProps<ImageNode>) {
   const updateNodeData = useBoards((state) => state.updateNodeData)
   const removeNodes = useBoards((state) => state.removeNodes)
+  const commit = useBoards((state) => state.commit)
   const viewOnly = useSettings((state) => state.viewOnly)
   const inputRef = useRef<HTMLInputElement>(null)
   const [zoomSrc, setZoomSrc] = useState<string | null>(null)
@@ -37,6 +38,8 @@ function ImageNodeComponent({ id, data, selected }: NodeProps<ImageNode>) {
     <>
       <NodeResizer
         isVisible={selected}
+        // Resizing is a discrete edit, so it gets its own undo step.
+        onResizeStart={commit}
         minWidth={120}
         minHeight={90}
         lineClassName="!border-primary/40"

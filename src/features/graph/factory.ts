@@ -5,6 +5,7 @@ import type { ZoteroItem } from '@/features/zotero/types'
 import { DEFAULT_RELATION, type RelationKind } from './relations'
 import {
   nodeId,
+  type ClaimNode,
   type CollectionNode,
   type CreatorNode,
   type FrameNode,
@@ -13,7 +14,11 @@ import {
   type ItemSnapshot,
   type MindEdge,
   type NoteNode,
+  type QuestionNode,
+  type RichTextNode,
   type TagNode,
+  type TimelineEntry,
+  type TimelineNode,
 } from './types'
 
 export const NODE_SIZE = {
@@ -22,7 +27,17 @@ export const NODE_SIZE = {
   chip: { width: 176, height: 48 },
   frame: { width: 520, height: 360 },
   image: { width: 240, height: 200 },
+  richText: { width: 360, height: 180 },
+  timeline: { width: 760, height: 240 },
+  claim: { width: 300, height: 110 },
+  question: { width: 340, height: 120 },
 }
+
+/**
+ * Cards whose height follows their content only get a width; see
+ * AUTO_HEIGHT_TYPES in board-io.ts. The heights above remain layout estimates.
+ */
+const widthOf = (size: { width: number }) => ({ width: size.width })
 
 export function toSnapshot(item: ZoteroItem): ItemSnapshot {
   return {
@@ -50,7 +65,7 @@ export function createItemNode(item: ZoteroItem, position: XYPosition): ItemNode
     type: 'zoteroItem',
     position,
     data: { itemKey: item.key, snapshot: toSnapshot(item) },
-    ...NODE_SIZE.item,
+    ...widthOf(NODE_SIZE.item),
   }
 }
 
@@ -60,7 +75,73 @@ export function createNoteNode(position: XYPosition, text = ''): NoteNode {
     type: 'note',
     position,
     data: { text, accent: 'amber' },
-    ...NODE_SIZE.note,
+    ...widthOf(NODE_SIZE.note),
+  }
+}
+
+export function createClaimNode(position: XYPosition): ClaimNode {
+  return {
+    id: `claim:${nanoid(8)}`,
+    type: 'claim',
+    position,
+    data: { text: '' },
+    ...widthOf(NODE_SIZE.claim),
+  }
+}
+
+/** Numbers research questions RQ1, RQ2, … after the highest one already on the board. */
+export function nextQuestionCode(existing: string[]): string {
+  const numbers = existing.map((code) => /^RQ(\d+)$/i.exec(code.trim())?.[1]).map(Number).filter(Number.isFinite)
+  return `RQ${(numbers.length ? Math.max(...numbers) : 0) + 1}`
+}
+
+export function createQuestionNode(position: XYPosition, code: string): QuestionNode {
+  return {
+    id: `question:${nanoid(8)}`,
+    type: 'question',
+    position,
+    data: { code, text: '' },
+    ...widthOf(NODE_SIZE.question),
+  }
+}
+
+export function createRichTextNode(position: XYPosition): RichTextNode {
+  return {
+    id: `richText:${nanoid(8)}`,
+    type: 'richText',
+    position,
+    data: { doc: null, accent: 'neutral' },
+    ...widthOf(NODE_SIZE.richText),
+  }
+}
+
+export function createTimelineNode(position: XYPosition, label = 'Research timeline'): TimelineNode {
+  return {
+    id: `timeline:${nanoid(8)}`,
+    type: 'timeline',
+    position,
+    data: { label, entries: [] },
+    ...widthOf(NODE_SIZE.timeline),
+  }
+}
+
+/**
+ * A timeline span for a source. The span starts as the publication year alone;
+ * the user then stretches it to the research period the source actually covers.
+ */
+export function createTimelineEntry(source: {
+  itemKey?: string
+  title: string
+  creatorSummary?: string
+  year?: string
+}): TimelineEntry {
+  const year = Number.parseInt(source.year ?? '', 10)
+  const anchor = Number.isFinite(year) ? year : new Date().getFullYear()
+  return {
+    id: nanoid(8),
+    ...source,
+    from: anchor - 5,
+    to: anchor,
   }
 }
 
@@ -86,12 +167,14 @@ export function createCollectionNode(
   }
 }
 
-export function createFrameNode(position: XYPosition, label = 'Theme'): FrameNode {
+export function createFrameNode(position: XYPosition, label = 'Theme', variant?: 'tag'): FrameNode {
   return {
     id: `frame:${nanoid(8)}`,
     type: 'frame',
     position,
-    data: { label, accent: 'neutral' },
+    data: variant
+      ? { label, accent: 'emerald', variant, tag: '', weight: 'thick', lineStyle: 'solid' }
+      : { label, accent: 'neutral' },
     ...NODE_SIZE.frame,
     // Frames sit behind everything else and must not swallow clicks meant for cards.
     zIndex: -1,
@@ -192,7 +275,7 @@ export function createNoteNodeFromZotero(item: ZoteroItem, position: XYPosition)
     type: 'note',
     position,
     data: { text: stripHtml(String(item.data.note ?? '')), accent: 'cyan' },
-    ...NODE_SIZE.note,
+    ...widthOf(NODE_SIZE.note),
   }
 }
 
@@ -202,7 +285,20 @@ interface AnnotationLike {
     annotationText?: unknown
     annotationComment?: unknown
     annotationPageLabel?: unknown
+    annotationPosition?: unknown
+    parentItem?: unknown
     [field: string]: unknown
+  }
+}
+
+/** Zotero stores a 0-based `pageIndex` inside the JSON-encoded annotation position. */
+export function annotationPdfPage(position: unknown): number | undefined {
+  try {
+    const parsed: unknown = typeof position === 'string' ? JSON.parse(position) : position
+    const index = (parsed as { pageIndex?: unknown } | null)?.pageIndex
+    return typeof index === 'number' && Number.isInteger(index) && index >= 0 ? index + 1 : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -211,6 +307,7 @@ export function createQuoteNode(
   annotation: AnnotationLike,
   sourceTitle: string,
   position: XYPosition,
+  itemKey?: string,
 ): NoteNode {
   const text = stripHtml(String(annotation.data.annotationText ?? ''))
   const page = typeof annotation.data.annotationPageLabel === 'string'
@@ -220,8 +317,17 @@ export function createQuoteNode(
     id: nodeId.item(annotation.key),
     type: 'note',
     position,
-    data: { text, accent: 'amber', sourceTitle, page: page || undefined },
-    ...NODE_SIZE.note,
+    data: {
+      text,
+      accent: 'amber',
+      sourceTitle,
+      page: page || undefined,
+      itemKey,
+      attachmentKey: typeof annotation.data.parentItem === 'string' ? annotation.data.parentItem : undefined,
+      pdfPage: annotationPdfPage(annotation.data.annotationPosition),
+      annotationKey: annotation.key,
+    },
+    ...widthOf(NODE_SIZE.note),
   }
 }
 

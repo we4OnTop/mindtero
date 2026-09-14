@@ -37,9 +37,35 @@ export async function renderPdfPage(
   const fileUrl = source.getItemFileUrl?.(attachmentKey)
   if (!fileUrl) throw new Error('This library does not serve attachment files')
 
+  const { task, doc } = await openDocument(fileUrl)
+  try {
+    return await renderPage(doc, pageNumber)
+  } finally {
+    // Destroying the loading task tears down the document and its worker port.
+    void task.destroy()
+  }
+}
+
+type PdfLoadingTask = ReturnType<Awaited<ReturnType<typeof loadPdfjs>>['getDocument']>
+type PdfDocument = Awaited<PdfLoadingTask['promise']>
+
+async function openDocument(fileUrl: string): Promise<{ task: PdfLoadingTask; doc: PdfDocument }> {
   const pdfjs = await loadPdfjs()
-  const doc = await pdfjs.getDocument({ url: fileUrl }).promise
-  if (pageNumber < 1 || pageNumber > doc.numPages) {
+  const task = pdfjs.getDocument({ url: fileUrl })
+  try {
+    return { task, doc: await task.promise }
+  } catch (error) {
+    void task.destroy()
+    const status = (error as { status?: number }).status
+    if (status === 404) throw new Error('Zotero has no file for this attachment (is it stored locally?)')
+    if (status === 415) throw new Error('This attachment is not a PDF')
+    if (status === 502) throw new Error('Zotero is not reachable — is it running?')
+    throw error
+  }
+}
+
+async function renderPage(doc: PdfDocument, pageNumber: number): Promise<PdfPageInfo> {
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > doc.numPages) {
     throw new Error(`Page ${pageNumber} is out of range (1–${doc.numPages})`)
   }
   const page = await doc.getPage(pageNumber)
@@ -62,9 +88,12 @@ export async function renderPdfPage(
 export async function countPdfPages(source: ZoteroSource, attachmentKey: string): Promise<number> {
   const fileUrl = source.getItemFileUrl?.(attachmentKey)
   if (!fileUrl) return 0
-  const pdfjs = await loadPdfjs()
-  const doc = await pdfjs.getDocument({ url: fileUrl }).promise
-  return doc.numPages
+  const { task, doc } = await openDocument(fileUrl)
+  try {
+    return doc.numPages
+  } finally {
+    void task.destroy()
+  }
 }
 
 /** True when the source can hand us attachment binaries at all. */

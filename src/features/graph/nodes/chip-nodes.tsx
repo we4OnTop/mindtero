@@ -31,7 +31,7 @@ function Chip({
         {icon}
         <span className="truncate font-medium">{label}</span>
       </div>
-      <EdgeZones />
+      <EdgeZones size="chip" />
     </div>
   )
 }

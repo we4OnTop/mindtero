@@ -4,7 +4,7 @@ import { initAutoSave } from './lib/autosave'
 import './index.css'
 import App from './App.tsx'
 
-initAutoSave()
+void initAutoSave()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
